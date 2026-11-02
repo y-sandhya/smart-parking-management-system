@@ -1,0 +1,6 @@
+{
+  "name": "SMART PARK – AI Powered Smart Parking Reservation & Management System",
+  "description": "Next-generation smart parking reservation, IoT slot monitoring, dynamic pricing, and intelligent navigation platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
