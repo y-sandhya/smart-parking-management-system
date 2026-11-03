@@ -41,7 +41,8 @@ import {
   Heart,
   Flame,
   AlertTriangle,
-  PlusCircle
+  PlusCircle,
+  QrCode
 } from 'lucide-react';
 
 export default function App() {
@@ -214,8 +215,12 @@ export default function App() {
     r => r.userId === currentUser.id && (r.status === 'active' || r.status === 'upcoming')
   ).length;
 
+  const activeParkedSession = reservations.find(
+    r => r.userId === currentUser.id && r.status === 'active' && r.checkInTime && !r.checkOutTime
+  );
+
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-900 font-sans antialiased flex flex-col justify-between selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen bg-[#FAF9F6] text-[#172B4D] font-sans antialiased flex flex-col justify-between selection:bg-[#2563EB] selection:text-white">
       {/* Navbar with Mode Switcher & Favorites Counter */}
       <Navbar
         currentView={currentView}
@@ -247,6 +252,7 @@ export default function App() {
       {currentView === 'navigation' && activeNavReservation && (
         <FuturisticNavView
           reservation={activeNavReservation}
+          facilityName={locations.find(l => l.id === activeNavReservation.locationId)?.name}
           onExit={() => setCurrentView('user')}
           onArrived={() => {
             setCurrentView('user');
@@ -273,6 +279,57 @@ export default function App() {
       {/* VIEW 3: Driver / User Reservation Dashboard */}
       {currentView === 'user' && (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1 space-y-8 animate-fadeIn">
+          {/* Active Parking Session Live Telemetry Banner */}
+          {activeParkedSession && (
+            <div className="bg-white border-2 border-[#16A36A] rounded-2xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-[#16A36A] text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Car className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-sm text-[#172B4D]">
+                      Vehicle Currently Parked: Bay {activeParkedSession.slotNumber}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-[#16A36A] text-[10px] font-extrabold uppercase tracking-wide">
+                      Live Meter Running
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#718096] mt-0.5">
+                    {locations.find(l => l.id === activeParkedSession.locationId)?.name || 'Facility'} • {activeParkedSession.floor} • Vehicle {activeParkedSession.vehicle.licensePlate} ({activeParkedSession.vehicle.model})
+                  </p>
+                  <p className="text-[11px] text-[#16A36A] font-semibold mt-1 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Time-Based Billing Active: Unused prepaid duration will be automatically refunded upon gate exit scan.</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    setActiveNavReservation(activeParkedSession);
+                    setCurrentView('navigation');
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-[#F3F6FA] hover:bg-[#E7EBF0] text-[#172B4D] text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Compass className="w-4 h-4 text-[#2563EB]" />
+                  <span>In-Car HUD</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setActivePassReservation(activeParkedSession);
+                    setIsPassModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-black shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Digital Pass & Exit</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Feature 9: Driver Expiry & Overstay Alert Banner */}
           {expiringBooking && (
             <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-2xl p-4 shadow-lg flex items-center justify-between gap-4 animate-fadeIn">
@@ -380,17 +437,17 @@ export default function App() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                  <h2 className="text-xl font-black text-[#172B4D] tracking-tight">
                     {showOnlyFavorites ? 'My Saved Favorite Locations' : 'Nearby Smart Parking Facilities'}
                   </h2>
                   {showOnlyFavorites && (
-                    <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Heart className="w-3 h-3 fill-rose-600" />
+                    <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
+                      <Heart className="w-3 h-3 fill-rose-600 text-rose-600" />
                       {favoriteLocationIds.length} Saved
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-[#718096] mt-0.5">
                   Select a facility to inspect floor maps, live slot sensors, EV connector types, and community reviews.
                 </p>
               </div>
@@ -399,22 +456,22 @@ export default function App() {
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     showOnlyFavorites
                       ? 'bg-rose-500 text-white shadow-xs'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                      : 'bg-white text-[#718096] border border-[#E7EBF0] hover:bg-[#F3F6FA] hover:text-[#172B4D]'
                   }`}
                 >
-                  <Heart className={`w-3.5 h-3.5 ${showOnlyFavorites ? 'fill-white' : 'text-rose-500'}`} />
+                  <Heart className={`w-3.5 h-3.5 ${showOnlyFavorites ? 'fill-white text-white' : 'text-rose-500'}`} />
                   <span>Favorites ({favoriteLocationIds.length})</span>
                 </button>
 
                 <button
                   onClick={() => setFilterEvOnly(!filterEvOnly)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     filterEvOnly
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                      ? 'bg-[#16A36A] text-white shadow-xs'
+                      : 'bg-white text-[#718096] border border-[#E7EBF0] hover:bg-[#F3F6FA] hover:text-[#172B4D]'
                   }`}
                 >
                   <Zap className="w-3.5 h-3.5" />
@@ -423,10 +480,10 @@ export default function App() {
 
                 <button
                   onClick={() => setFilterPriceUnder5(!filterPriceUnder5)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     filterPriceUnder5
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                      ? 'bg-[#2563EB] text-white shadow-xs'
+                      : 'bg-white text-[#718096] border border-[#E7EBF0] hover:bg-[#F3F6FA] hover:text-[#172B4D]'
                   }`}
                 >
                   <span>Under $4.50/hr</span>
@@ -436,10 +493,10 @@ export default function App() {
 
             {/* Location Cards Grid */}
             {filteredLocations.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 space-y-2">
-                <Heart className="w-8 h-8 mx-auto text-slate-300" />
-                <h4 className="font-bold text-slate-800 text-sm">No facilities match your filter</h4>
-                <p className="text-xs text-slate-500">
+              <div className="p-12 text-center bg-white rounded-3xl border border-[#E7EBF0] shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-2">
+                <Heart className="w-8 h-8 mx-auto text-[#718096]/40" />
+                <h4 className="font-bold text-[#172B4D] text-sm">No facilities match your filter</h4>
+                <p className="text-xs text-[#718096]">
                   {showOnlyFavorites
                     ? 'You have not favorited any facilities yet. Click the heart icon on any card to save it!'
                     : 'Try clearing your search query or EV filter.'}
@@ -447,7 +504,7 @@ export default function App() {
                 {showOnlyFavorites && (
                   <button
                     onClick={() => setShowOnlyFavorites(false)}
-                    className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
+                    className="mt-2 px-4 py-2 bg-[#2563EB] text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors cursor-pointer"
                   >
                     View All Locations
                   </button>
@@ -463,7 +520,7 @@ export default function App() {
                     onSelect={handleSelectLocation}
                     isFavorite={favoriteLocationIds.includes(loc.id)}
                     onToggleFavorite={handleToggleFavorite}
-                    onOpenReviews={(l) => setReviewsModalLocation(l)}
+                    onOpenReviews={(l: ParkingLocation) => setReviewsModalLocation(l)}
                   />
                 ))}
               </div>
@@ -475,7 +532,7 @@ export default function App() {
             <SmartRecommendationBanner
               locationId={selectedLocation.id}
               currentFloor={currentFloor}
-              onSelectSlot={(slot) => {
+              onSelectSlot={(slot: ParkingSlot) => {
                 setSelectedSlot(slot);
                 setIsReservationOpen(true);
               }}
@@ -489,14 +546,14 @@ export default function App() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                  <h2 className="text-xl font-black text-[#172B4D] tracking-tight">
                     {selectedLocation ? selectedLocation.name : 'Interactive Parking Map'}
                   </h2>
-                  <span className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                  <span className="text-xs font-bold text-[#2563EB] bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full shadow-2xs">
                     {currentFloor}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-[#718096] mt-0.5">
                   Top-down visual bay layout with realistic vehicle illustrations and lane driving paths.
                 </p>
               </div>
@@ -504,7 +561,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsHeatmapOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
                 >
                   <Flame className="w-3.5 h-3.5 text-rose-600" />
                   <span>Zone Heatmap</span>
@@ -513,7 +570,7 @@ export default function App() {
                 {selectedSlot && (
                   <button
                     onClick={() => setIsReservationOpen(true)}
-                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md hover:shadow-lg transition-all animate-pulse cursor-pointer"
+                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-black shadow-md hover:shadow-lg transition-all animate-pulse cursor-pointer"
                   >
                     <span>Reserve Bay {selectedSlot.slotNumber}</span>
                     <ArrowRight className="w-4 h-4" />
@@ -527,7 +584,7 @@ export default function App() {
               <ParkingFloorMap
                 slots={slots}
                 selectedSlot={selectedSlot}
-                onSelectSlot={(slot) => {
+                onSelectSlot={(slot: ParkingSlot) => {
                   setSelectedSlot(slot);
                   setIsReservationOpen(true);
                 }}
@@ -613,7 +670,7 @@ export default function App() {
         reservation={activePassReservation}
         onLaunchNavigation={handleLaunchNavigation}
         onCancelled={handleCancelReservation}
-        onReservationUpdated={(updated) => {
+        onReservationUpdated={(updated: Reservation) => {
           setReservations(prev => prev.map(r => (r.id === updated.id ? updated : r)));
           setActivePassReservation(updated);
         }}
@@ -624,7 +681,7 @@ export default function App() {
         isOpen={!!extensionModalBooking}
         onClose={() => setExtensionModalBooking(null)}
         reservation={extensionModalBooking}
-        onExtensionSuccess={(updated) => {
+        onExtensionSuccess={(updated: Reservation) => {
           setReservations(prev => prev.map(r => (r.id === updated.id ? updated : r)));
           setActivePassReservation(updated);
           setExpiringBooking(null);
@@ -648,7 +705,7 @@ export default function App() {
           onClose={() => setReviewsModalLocation(null)}
           location={reviewsModalLocation}
           currentUser={currentUser}
-          onReviewAdded={(updatedLoc) => {
+          onReviewAdded={(updatedLoc: Partial<ParkingLocation>) => {
             setLocations(prev =>
               prev.map(l => (l.id === reviewsModalLocation.id ? { ...l, ...updatedLoc } : l))
             );
@@ -661,7 +718,7 @@ export default function App() {
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
         user={currentUser}
-        onUpdateUser={(updated) => {
+        onUpdateUser={(updated: UserProfile) => {
           setCurrentUser(updated);
           setAllUsers(prev => prev.map(u => (u.id === updated.id ? updated : u)));
         }}

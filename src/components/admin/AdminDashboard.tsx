@@ -42,15 +42,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   locations,
   onRefreshData,
 }) => {
-  const [selectedLocationId, setSelectedLocationId] = useState<string>(locations[0]?.id || 'loc-metro-central');
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
   const [slots, setSlots] = useState<ParkingSlot[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [overstayAlerts, setOverstayAlerts] = useState<OverstayAlert[]>([]);
   const [analyticsPeriod, setAnalyticsPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [analytics, setAnalytics] = useState<{
     stats: OccupancyStats;
+    facilityBreakdown?: any[];
     hourlyOccupancy: { hour: string; rate: number; revenue: number }[];
     zoneDistribution: { zone: string; occupancy: number; total: number; revenue: number }[];
+    selectedFacility?: string;
   } | null>(null);
 
   const [activeTab, setActiveTab] = useState<'monitor' | 'spaces' | 'bookings' | 'analytics' | 'overstay' | 'iot'>('monitor');
@@ -65,7 +67,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isForecastOpen, setIsForecastOpen] = useState(false);
   const [isHeatmapOpen, setIsHeatmapOpen] = useState(false);
   const [isRandomizingIoT, setIsRandomizingIoT] = useState(false);
+  const [notifiedAlertId, setNotifiedAlertId] = useState<string | null>(null);
 
+  const isAllFacilities = selectedLocationId === 'all';
   const currentLocation = locations.find(l => l.id === selectedLocationId) || locations[0];
 
   useEffect(() => {
@@ -74,16 +78,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const fetchAdminData = async () => {
     try {
+      const slotFilter = selectedLocationId === 'all' ? {} : { locationId: selectedLocationId };
       const [fetchedSlots, fetchedReservations, fetchedAnalytics, fetchedOverstay] = await Promise.all([
-        api.getSlots({ locationId: selectedLocationId }),
+        api.getSlots(slotFilter),
         api.getReservations(),
-        api.getAnalytics(),
+        api.getAnalytics(selectedLocationId),
         api.getOverstayAlerts(),
       ]);
       setSlots(fetchedSlots);
-      setReservations(fetchedReservations);
+      setReservations(selectedLocationId === 'all' ? fetchedReservations : fetchedReservations.filter(r => r.locationId === selectedLocationId));
       setAnalytics(fetchedAnalytics);
-      setOverstayAlerts(fetchedOverstay);
+      setOverstayAlerts(selectedLocationId === 'all' ? fetchedOverstay : fetchedOverstay.filter(a => fetchedSlots.some(s => s.slotNumber === a.slotNumber)));
     } catch (err) {
       console.error('Failed to load admin data:', err);
     }
@@ -194,19 +199,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* Admin Top Facility Bar & Quick Actions */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-[#E7EBF0] p-4 sm:p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black shadow-sm">
+          <div className="w-10 h-10 rounded-2xl bg-[#2563EB] text-white flex items-center justify-center font-black shadow-sm">
             SP
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-slate-900 tracking-tight">Admin Operations Center</h2>
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
+              <h2 className="text-lg font-black text-[#172B4D] tracking-tight">Admin Operations Center</h2>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-[#2563EB] border border-blue-200 px-2 py-0.5 rounded-full shadow-2xs">
                 Facility Control
               </span>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#718096]">
               Capacity monitoring, QR access control, overstay enforcement, and analytics.
             </p>
           </div>
@@ -217,8 +222,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <select
             value={selectedLocationId}
             onChange={(e) => setSelectedLocationId(e.target.value)}
-            className="text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200/80 px-3 py-2 rounded-xl border border-slate-200 transition-colors"
+            className="text-xs font-bold text-[#172B4D] bg-[#F3F6FA] hover:bg-slate-200/80 px-3 py-2 rounded-xl border border-[#E7EBF0] transition-colors cursor-pointer"
           >
+            <option value="all">★ All Four Facilities (Combined Network Overview)</option>
             {locations.map(loc => (
               <option key={loc.id} value={loc.id}>
                 {loc.name}
@@ -228,7 +234,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <button
             onClick={() => setIsGateScannerOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#172B4D] hover:bg-slate-900 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
             <Scan className="w-3.5 h-3.5 text-cyan-300" />
             <span>Gate Scanner</span>
@@ -236,7 +242,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <button
             onClick={() => setIsHeatmapOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
           >
             <Flame className="w-3.5 h-3.5 text-rose-600" />
             <span>Demand Heatmap</span>
@@ -244,7 +250,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <button
             onClick={() => setIsForecastOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
           >
             <Brain className="w-3.5 h-3.5 text-indigo-600" />
             <span>AI Surge ML</span>
@@ -253,17 +259,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Feature 8: Period Selector (Daily, Weekly, Monthly) & Downloadable CSV Reports */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-[#E7EBF0] text-xs shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-400 font-semibold mr-1">Time Period:</span>
+          <span className="text-[#718096] font-semibold mr-1">Time Period:</span>
           {(['daily', 'weekly', 'monthly'] as const).map(p => (
             <button
               key={p}
               onClick={() => setAnalyticsPeriod(p)}
-              className={`px-3 py-1.5 rounded-xl font-bold uppercase text-[10px] tracking-wider transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-bold uppercase text-[10px] tracking-wider transition-all cursor-pointer ${
                 analyticsPeriod === p
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-[#2563EB] text-white shadow-xs'
+                  : 'bg-[#F3F6FA] text-[#718096] hover:bg-slate-200'
               }`}
             >
               {p}
@@ -273,28 +279,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* CSV Export Dropdown Buttons */}
         <div className="flex items-center gap-2">
-          <span className="text-slate-400 font-semibold hidden sm:inline">Export Reports:</span>
+          <span className="text-[#718096] font-semibold hidden sm:inline">Export Reports:</span>
           <button
             onClick={() => handleDownloadCsv('bookings')}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#F3F6FA] hover:bg-slate-200 text-[#172B4D] font-bold text-xs transition-colors cursor-pointer border border-[#E7EBF0]"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 text-[#2563EB]" />
             <span>Bookings CSV</span>
           </button>
 
           <button
             onClick={() => handleDownloadCsv('revenue')}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#F3F6FA] hover:bg-slate-200 text-[#172B4D] font-bold text-xs transition-colors cursor-pointer border border-[#E7EBF0]"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 text-[#16A36A]" />
             <span>Revenue CSV</span>
           </button>
 
           <button
             onClick={() => handleDownloadCsv('occupancy')}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#F3F6FA] hover:bg-slate-200 text-[#172B4D] font-bold text-xs transition-colors cursor-pointer border border-[#E7EBF0]"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3.5 h-3.5 text-[#E9A23B]" />
             <span>Occupancy CSV</span>
           </button>
         </div>
@@ -303,79 +309,172 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* KPI Overview Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Revenue */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
+        <div className="bg-white rounded-2xl border border-[#E7EBF0] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+          <div className="flex items-center justify-between text-[#718096] text-xs font-semibold mb-1">
             <span className="capitalize">{analyticsPeriod} Gross Revenue</span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
+            <DollarSign className="w-4 h-4 text-[#16A36A]" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900">${periodRevenue}</span>
-            <span className="text-[11px] font-bold text-emerald-600 flex items-center">
+            <span className="text-2xl font-black text-[#172B4D]">${periodRevenue}</span>
+            <span className="text-[11px] font-bold text-[#16A36A] flex items-center">
               <ArrowUpRight className="w-3 h-3" /> +16.4%
             </span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400">
-            Dynamic pricing multiplier active ({currentLocation.currentDynamicMultiplier}x)
+          <div className="mt-2 text-[11px] text-[#718096]">
+            {isAllFacilities ? 'All 4 Smart Park Facilities Combined' : `Dynamic pricing active (${currentLocation.currentDynamicMultiplier}x)`}
           </div>
         </div>
 
         {/* Total Bookings */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
+        <div className="bg-white rounded-2xl border border-[#E7EBF0] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+          <div className="flex items-center justify-between text-[#718096] text-xs font-semibold mb-1">
             <span className="capitalize">{analyticsPeriod} Reservations</span>
-            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+            <CheckCircle2 className="w-4 h-4 text-[#2563EB]" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-blue-600">{periodBookings}</span>
-            <span className="text-xs text-slate-400">confirmed passes</span>
+            <span className="text-2xl font-black text-[#2563EB]">{periodBookings}</span>
+            <span className="text-xs text-[#718096]">confirmed passes</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-500 font-medium">
+          <div className="mt-2 text-[11px] text-[#718096] font-medium">
             {reservations.filter(r => r.evChargingIncluded).length} EV charging sessions included
           </div>
         </div>
 
         {/* Occupancy Rate */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
+        <div className="bg-white rounded-2xl border border-[#E7EBF0] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+          <div className="flex items-center justify-between text-[#718096] text-xs font-semibold mb-1">
             <span>Average Occupancy</span>
-            <Car className="w-4 h-4 text-amber-600" />
+            <Car className="w-4 h-4 text-[#E9A23B]" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900">
+            <span className="text-2xl font-black text-[#172B4D]">
               {analytics ? analytics.stats.occupancyRatePercentage : 78}%
             </span>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-[#718096]">
               ({slots.filter(s => s.status === 'occupied').length} / {slots.length} bays)
             </span>
           </div>
-          <div className="mt-2.5 h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+          <div className="mt-2.5 h-2 w-full bg-[#F3F6FA] rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-600 rounded-full transition-all duration-500"
+              className="h-full bg-[#2563EB] rounded-full transition-all duration-500"
               style={{ width: `${analytics ? analytics.stats.occupancyRatePercentage : 78}%` }}
             />
           </div>
         </div>
 
         {/* Active Users */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
+        <div className="bg-white rounded-2xl border border-[#E7EBF0] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+          <div className="flex items-center justify-between text-[#718096] text-xs font-semibold mb-1">
             <span className="capitalize">{analyticsPeriod} Active Drivers</span>
             <Users className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900">{activeUsersCount}</span>
-            <span className="text-xs text-emerald-600 font-bold">+28% retention</span>
+            <span className="text-2xl font-black text-[#172B4D]">{activeUsersCount}</span>
+            <span className="text-xs text-[#16A36A] font-bold">+28% retention</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <div className="mt-2 text-[11px] text-[#718096] flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#16A36A]"></span>
             Contactless mobile pass adoption
           </div>
         </div>
       </div>
 
+      {/* Combined Four-Facility Operational Overview Grid */}
+      {isAllFacilities && (
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-sm text-[#1E293B]">
+                  Combined Four-Facility Operational Overview
+                </h3>
+                <span className="text-[10px] font-bold uppercase bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                  All 4 Facilities Online
+                </span>
+              </div>
+              <p className="text-xs text-[#64748B] mt-0.5">
+                Real-time capacity, sensor health, and independent revenue metrics across the smart parking network.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {locations.map(loc => {
+              const locSlots = slots.filter(s => s.locationId === loc.id);
+              const locRes = reservations.filter(r => r.locationId === loc.id);
+              const locOccupied = locSlots.filter(s => s.status === 'occupied').length;
+              const locReserved = locSlots.filter(s => s.status === 'reserved').length;
+              const locAvailable = locSlots.filter(s => s.status === 'available').length;
+              const locTotal = locSlots.length;
+              const locRate = locTotal > 0 ? Math.round(((locOccupied + locReserved) / locTotal) * 100) : 0;
+              const locRev = locRes
+                .filter(r => r.paymentStatus === 'paid' || r.paymentStatus === 'settled')
+                .reduce((sum, r) => sum + (r.finalCharge || r.totalAmount), 0);
+
+              const rateColor =
+                locRate >= 85 ? 'bg-rose-500 text-white' :
+                locRate >= 70 ? 'bg-orange-500 text-white' :
+                locRate >= 40 ? 'bg-yellow-500 text-slate-900' :
+                'bg-emerald-500 text-white';
+
+              return (
+                <div
+                  key={loc.id}
+                  className="bg-[#FAF8F5] border border-[#E2E8F0] rounded-2xl p-4 flex flex-col justify-between hover:shadow-md transition-all"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded">
+                        {loc.floors.length} Floors • 4 Zones
+                      </span>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${rateColor}`}>
+                        {locRate}% Full
+                      </span>
+                    </div>
+
+                    <h4 className="font-extrabold text-sm text-[#1E293B] line-clamp-1">
+                      {loc.name}
+                    </h4>
+                    <p className="text-[11px] text-[#64748B] line-clamp-1 mt-0.5">
+                      {loc.address}
+                    </p>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2 bg-white rounded-xl border border-[#E2E8F0]">
+                        <span className="text-[10px] text-[#64748B] block">Free Bays</span>
+                        <span className="font-black text-emerald-700">{locAvailable} / {locTotal}</span>
+                      </div>
+                      <div className="p-2 bg-white rounded-xl border border-[#E2E8F0]">
+                        <span className="text-[10px] text-[#64748B] block">Parked</span>
+                        <span className="font-black text-[#1E293B]">{locOccupied}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 pt-2 border-t border-[#E2E8F0] text-[11px] flex items-center justify-between text-[#64748B]">
+                      <span>Sensors: <strong className="text-emerald-700 font-bold">{locTotal}/{locTotal} OK</strong></span>
+                      <span>Rev: <strong className="text-[#1E293B] font-bold">${locRev.toFixed(2)}</strong></span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setSelectedLocationId(loc.id);
+                      setSelectedFloor('all');
+                    }}
+                    className="mt-3 w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl transition-colors cursor-pointer text-center shadow-2xs"
+                  >
+                    Select Facility & Manage Bays →
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Main Admin Tab Navigation */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white rounded-2xl border border-[#E7EBF0] shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
+        <div className="px-5 py-3 border-b border-[#E7EBF0] bg-[#F3F6FA] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 overflow-x-auto">
             {[
               { id: 'monitor', label: 'Real-Time Bay Monitor' },
@@ -388,10 +487,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
                   activeTab === tab.id
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    ? 'bg-[#2563EB] text-white shadow-xs'
+                    : 'text-[#718096] hover:text-[#172B4D] hover:bg-slate-200/60'
                 }`}
               >
                 {tab.label}
@@ -403,10 +502,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               onClick={handleRandomizeTraffic}
               disabled={isRandomizingIoT}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-[#172B4D] border border-[#E7EBF0] text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
               title="Simulates real-world traffic moving in and out"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRandomizingIoT ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-[#2563EB] ${isRandomizingIoT ? 'animate-spin' : ''}`} />
               <span>Simulate Live Traffic</span>
             </button>
           </div>
@@ -734,27 +833,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-rose-100">
-                    {overstayAlerts.map(alert => (
-                      <tr key={alert.reservationId} className="hover:bg-rose-50/40">
-                        <td className="p-3 font-mono font-bold text-slate-900">{alert.bookingReference}</td>
-                        <td className="p-3 font-bold text-blue-700">Bay {alert.slotNumber} ({alert.floor})</td>
-                        <td className="p-3 font-mono text-slate-800">{alert.vehiclePlate} ({alert.vehicleModel})</td>
+                    {overstayAlerts.map(item => (
+                      <tr key={item.reservationId} className="hover:bg-rose-50/40">
+                        <td className="p-3 font-mono font-bold text-slate-900">{item.bookingReference}</td>
+                        <td className="p-3 font-bold text-blue-700">Bay {item.slotNumber} ({item.floor})</td>
+                        <td className="p-3 font-mono text-slate-800">{item.vehiclePlate} ({item.vehicleModel})</td>
                         <td className="p-3 text-slate-700">
-                          {alert.driverName}
-                          <div className="text-[10px] text-slate-400">{alert.driverPhone}</div>
+                          {item.driverName}
+                          <div className="text-[10px] text-slate-400">{item.driverPhone}</div>
                         </td>
                         <td className="p-3 text-slate-600">
-                          {new Date(alert.scheduledEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(item.scheduledEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </td>
-                        <td className="p-3 font-bold text-rose-600">+{alert.minutesOverdue} mins</td>
-                        <td className="p-3 font-black text-rose-700">${alert.penaltyFee.toFixed(2)}</td>
+                        <td className="p-3 font-bold text-rose-600">+{item.minutesOverdue} mins</td>
+                        <td className="p-3 font-black text-rose-700">${item.penaltyFee.toFixed(2)}</td>
                         <td className="p-3 text-right">
                           <button
-                            onClick={() => alert(`Notified driver ${alert.driverName} via SMS at ${alert.driverPhone}`)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 text-white font-bold text-[11px] hover:bg-rose-700"
+                            onClick={() => setNotifiedAlertId(item.reservationId)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[11px] transition-colors cursor-pointer ${
+                              notifiedAlertId === item.reservationId
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-rose-600 text-white hover:bg-rose-700'
+                            }`}
                           >
                             <Phone className="w-3 h-3" />
-                            <span>Notify Driver</span>
+                            <span>{notifiedAlertId === item.reservationId ? 'SMS Sent ✓' : 'Notify Driver'}</span>
                           </button>
                         </td>
                       </tr>

@@ -21,12 +21,14 @@ import {
 
 interface FuturisticNavViewProps {
   reservation: Reservation;
+  facilityName?: string;
   onExit: () => void;
   onArrived: () => void;
 }
 
 export const FuturisticNavView: React.FC<FuturisticNavViewProps> = ({
   reservation,
+  facilityName,
   onExit,
   onArrived,
 }) => {
@@ -37,11 +39,13 @@ export const FuturisticNavView: React.FC<FuturisticNavViewProps> = ({
   const [isSimulatingApproach, setIsSimulatingApproach] = useState<boolean>(true);
   const [simulatedClearance, setSimulatedClearance] = useState<number>(2.4);
 
+  const assignedGate = 'Gate 1 (North Automated Barrier)';
+
   // Turn-by-turn navigation instructions
   const navSteps = [
-    { instruction: 'Enter through Gate 1 & Proceed Straight 20m', icon: 'straight', lane: 'Main Access Way' },
-    { instruction: 'Turn RIGHT into Corridor A at Pillar P-02', icon: 'right', lane: 'Corridor A' },
-    { instruction: `Bay ${reservation.slotNumber} is 12m ahead on your LEFT`, icon: 'left', lane: `Zone ${reservation.zone}` },
+    { instruction: `Enter through ${assignedGate} & Proceed Straight 20m`, icon: 'straight', lane: 'Main Inbound Lane' },
+    { instruction: `Proceed up ramp to ${reservation.floor} & Turn RIGHT at Pillar P-02`, icon: 'right', lane: `${reservation.floor} Access` },
+    { instruction: `Bay ${reservation.slotNumber} (${reservation.zone}) is 12m ahead on your LEFT`, icon: 'left', lane: `${reservation.zone} Corridor` },
     { instruction: `Align vehicle & Reverse into Bay ${reservation.slotNumber}`, icon: 'park', lane: `Bay ${reservation.slotNumber}` },
   ];
 
@@ -81,21 +85,23 @@ export const FuturisticNavView: React.FC<FuturisticNavViewProps> = ({
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#CCFF00]/10 rounded-full blur-[140px] pointer-events-none" />
 
       {/* Top Cockpit HUD Bar */}
-      <div className="relative z-20 px-6 py-4 border-b border-[#1E293B]/80 bg-[#090E1A]/90 backdrop-blur-md flex items-center justify-between">
+      <div className="relative z-20 px-6 py-4 border-b border-[#1E293B]/80 bg-[#090E1A]/90 backdrop-blur-md flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4">
           {/* Compass / Heading indicator */}
           <div className="flex items-center gap-2 bg-[#0D1527] border border-[#CCFF00]/40 px-3.5 py-1.5 rounded-xl shadow-[0_0_15px_rgba(204,255,0,0.15)]">
             <Compass className="w-5 h-5 text-[#CCFF00] animate-spin" style={{ animationDuration: '20s' }} />
             <div>
-              <div className="text-[10px] text-slate-400 font-mono uppercase tracking-widest">HEADING</div>
-              <div className="text-xs font-mono font-bold text-[#CCFF00]">338° NW • LEVEL {reservation.floor.toUpperCase()}</div>
+              <div className="text-[10px] text-slate-400 font-mono uppercase tracking-widest">FACILITY & HEADING</div>
+              <div className="text-xs font-mono font-bold text-[#CCFF00]">
+                {facilityName || 'SMART PARK GARAGE'} • {reservation.floor.toUpperCase()}
+              </div>
             </div>
           </div>
 
           <div className="hidden sm:block">
-            <div className="text-[10px] font-mono uppercase text-slate-400">VEHICLE TELEMETRY</div>
+            <div className="text-[10px] font-mono uppercase text-slate-400">VEHICLE & GATE</div>
             <div className="text-xs font-mono font-semibold text-white">
-              {reservation.vehicle.model} • [{reservation.vehicle.licensePlate}]
+              {reservation.vehicle.model} [{reservation.vehicle.licensePlate}] • {assignedGate}
             </div>
           </div>
         </div>
@@ -104,7 +110,7 @@ export const FuturisticNavView: React.FC<FuturisticNavViewProps> = ({
         <div className="bg-[#0D1527] border border-cyan-400/50 px-5 py-2 rounded-2xl flex items-center gap-3 shadow-[0_0_20px_rgba(0,240,255,0.15)]">
           <div className="w-3 h-3 rounded-full bg-[#CCFF00] animate-ping" />
           <div>
-            <div className="text-[9px] font-mono text-cyan-300 uppercase tracking-widest">TARGET BAY</div>
+            <div className="text-[9px] font-mono text-cyan-300 uppercase tracking-widest">ASSIGNED SPACE</div>
             <div className="text-lg font-mono font-black text-white tracking-wider">
               BAY {reservation.slotNumber}
             </div>
@@ -112,13 +118,16 @@ export const FuturisticNavView: React.FC<FuturisticNavViewProps> = ({
           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
             {reservation.zone}
           </span>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+            {reservation.floor}
+          </span>
         </div>
 
         {/* Right action controls */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setAudioEnabled(!audioEnabled)}
-            className={`p-2.5 rounded-xl border transition-all ${
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
               audioEnabled
                 ? 'bg-[#CCFF00]/10 border-[#CCFF00]/50 text-[#CCFF00]'
                 : 'bg-slate-800 border-slate-700 text-slate-400'
@@ -130,7 +139,7 @@ export const FuturisticNavView: React.FC<FuturisticNavViewProps> = ({
 
           <button
             onClick={onExit}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
             <span>Close HUD</span>

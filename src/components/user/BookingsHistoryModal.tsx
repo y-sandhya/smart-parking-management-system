@@ -175,11 +175,25 @@ export const BookingsHistoryModal: React.FC<BookingsHistoryModalProps> = ({
                     </div>
 
                     <div>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Total Paid</span>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">
+                        {res.status === 'completed' && res.finalCharge !== undefined ? 'Final Billed' : 'Prepaid Total'}
+                      </span>
                       <div className="font-extrabold text-blue-600 text-sm mt-0.5">
-                        ${res.totalAmount.toFixed(2)}
+                        ${(res.finalCharge !== undefined ? res.finalCharge : res.totalAmount).toFixed(2)}
                       </div>
-                      <div className="text-[10px] text-slate-400">{res.durationHours} hrs session</div>
+                      {res.refundAmount !== undefined && res.refundAmount > 0 && (
+                        <div className="text-[10px] text-emerald-600 font-extrabold">
+                          Refunded: ${res.refundAmount.toFixed(2)}
+                        </div>
+                      )}
+                      {res.additionalCharge !== undefined && res.additionalCharge > 0 && (
+                        <div className="text-[10px] text-rose-600 font-extrabold">
+                          Overstay: +${res.additionalCharge.toFixed(2)}
+                        </div>
+                      )}
+                      <div className="text-[10px] text-slate-400">
+                        {res.billedHours !== undefined ? `${res.billedHours}h used` : `${res.durationHours}h reserved`}
+                      </div>
                     </div>
                   </div>
 
@@ -194,7 +208,7 @@ export const BookingsHistoryModal: React.FC<BookingsHistoryModalProps> = ({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-colors"
                       >
                         <QrCode className="w-3.5 h-3.5" />
-                        <span>View Pass</span>
+                        <span>{res.status === 'completed' ? 'Pass & Receipt' : 'View Pass'}</span>
                       </button>
 
                       {onExtend && (isActive || isUpcoming) && (

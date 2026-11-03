@@ -15,7 +15,8 @@ import {
   ZoneHeatmapData,
   HeatmapResponse,
   SmartPricingResult,
-  OverstayAlert
+  OverstayAlert,
+  PaymentReceipt
 } from './src/types/index.ts';
 
 dotenv.config();
@@ -334,6 +335,7 @@ async function startServer() {
     const evFee = evChargingIncluded ? 5.00 : 0;
     const baseCost = baseRate * hours * multiplier;
     const totalAmount = Number((baseCost + evFee).toFixed(2));
+    const effectiveHourlyRate = Number((baseRate * multiplier).toFixed(2));
 
     const bookingRef = `SP-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 89999)}`;
     const pin = String(Math.floor(1000 + Math.random() * 9000));
@@ -365,6 +367,12 @@ async function startServer() {
       evChargingFee: evFee,
       discountApplied: 0,
       totalAmount,
+      prepaidAmount: totalAmount,
+      effectiveHourlyRate,
+      finalCharge: totalAmount,
+      refundAmount: 0,
+      additionalCharge: 0,
+      billingSettled: false,
       status: 'upcoming',
       paymentStatus: 'paid',
       paymentMethod: paymentMethod || 'ParkWallet Balance',
@@ -375,6 +383,12 @@ async function startServer() {
       qrScannedEntry: false,
       qrScannedExit: false,
     };
+
+    // Deduct prepaid reserve from user's simulated wallet
+    const bookingUser = users.find(u => u.id === userId);
+    if (bookingUser && (paymentMethod === 'ParkWallet Balance' || !paymentMethod)) {
+      bookingUser.walletBalance = Math.max(0, Number((bookingUser.walletBalance - totalAmount).toFixed(2)));
+    }
 
     const nowMs = Date.now();
     if (startMs - nowMs <= 30 * 60000 && startMs <= nowMs + 15 * 60000) {
@@ -547,11 +561,12 @@ async function startServer() {
         });
       }
 
-      if (booking.qrScannedExit || booking.status === 'completed') {
+      if (booking.billingSettled || booking.qrScannedExit || booking.status === 'completed') {
         return res.status(400).json({
           valid: false,
-          message: 'Notice: This parking pass has already completed exit.',
+          message: 'Notice: This parking pass has already completed exit and settled billing. Duplicate settlement prevented.',
           booking,
+          receipt: booking.receipt,
         });
       }
 
@@ -564,23 +579,95 @@ async function startServer() {
       const actualMinutes = Math.max(1, Math.round((exitMs - entryMs) / 60000));
       booking.actualDurationMinutes = actualMinutes;
 
-      const scheduledEndMs = new Date(booking.endTime).getTime();
-      let overstayPenalty = 0;
-      let overstayMinutes = 0;
+      // Consistent partial-hour rounding policy: 1 hour minimum, rounded up to nearest full hour
+      const billedHours = Math.max(1, Math.ceil(actualMinutes / 60));
+      booking.billedHours = billedHours;
 
-      if (exitMs > scheduledEndMs) {
-        overstayMinutes = Math.round((exitMs - scheduledEndMs) / 60000);
-        const overstayHours = Math.ceil(overstayMinutes / 60);
-        overstayPenalty = overstayHours * 10.00;
-        booking.overstayMinutes = overstayMinutes;
-        booking.overstayPenalty = overstayPenalty;
+      const hourlyRate = booking.effectiveHourlyRate || Number((booking.baseRatePerHour * (booking.dynamicMultiplier || 1)).toFixed(2));
+      const prepaidAmount = booking.prepaidAmount || booking.totalAmount;
+      const evFee = booking.evChargingIncluded ? (booking.evChargingFee || 5.00) : 0;
+      const baseUsageCharge = Number((billedHours * hourlyRate).toFixed(2));
+      const calculatedCharge = Number((baseUsageCharge + evFee).toFixed(2));
+
+      let finalCharge = calculatedCharge;
+      let refundAmount = 0;
+      let additionalCharge = 0;
+
+      if (billedHours < booking.durationHours) {
+        // Unused duration -> refund the difference
+        refundAmount = Math.max(0, Number((prepaidAmount - finalCharge).toFixed(2)));
+        additionalCharge = 0;
+      } else if (billedHours === booking.durationHours) {
+        // Exact duration used -> 0 refund
+        finalCharge = prepaidAmount;
+        refundAmount = 0;
+        additionalCharge = 0;
+      } else {
+        // Exceeded booked duration -> additional charge for extra hours
+        refundAmount = 0;
+        additionalCharge = Number((finalCharge - prepaidAmount).toFixed(2));
       }
+
+      booking.finalCharge = finalCharge;
+      booking.refundAmount = refundAmount;
+      booking.additionalCharge = additionalCharge;
+      booking.billingSettled = true;
+      booking.paymentStatus = 'settled';
+
+      const user = users.find(u => u.id === booking.userId);
+      const walletBefore = user ? user.walletBalance : 0;
+      if (user) {
+        if (refundAmount > 0) {
+          user.walletBalance = Number((user.walletBalance + refundAmount).toFixed(2));
+        } else if (additionalCharge > 0) {
+          user.walletBalance = Math.max(0, Number((user.walletBalance - additionalCharge).toFixed(2)));
+        }
+      }
+      const walletAfter = user ? user.walletBalance : walletBefore;
+
+      const loc = locations.find(l => l.id === booking.locationId);
+      const receipt: PaymentReceipt = {
+        receiptId: `REC-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        bookingReference: booking.bookingReference,
+        facilityName: loc ? loc.name : 'Smart Park Facility',
+        slotNumber: booking.slotNumber,
+        floor: booking.floor,
+        zone: booking.zone,
+        vehiclePlate: booking.vehicle.licensePlate,
+        vehicleModel: booking.vehicle.model,
+        checkInTime: booking.checkInTime!,
+        checkOutTime: booking.checkOutTime!,
+        bookedDurationHours: booking.durationHours,
+        actualDurationMinutes: actualMinutes,
+        billedHours,
+        hourlyRate,
+        prepaidAmount,
+        baseUsageCharge,
+        evChargingFee: evFee,
+        overstayCharge: additionalCharge,
+        finalCharge,
+        refundAmount,
+        additionalCharge,
+        walletBalanceBefore: walletBefore,
+        walletBalanceAfter: walletAfter,
+        timestamp: now.toISOString(),
+        isSimulated: true,
+        roundingPolicy: 'Partial hours rounded up to nearest full hour (1 hour minimum threshold)',
+      };
+      booking.receipt = receipt;
 
       if (targetSlot) {
         targetSlot.status = 'available';
         targetSlot.occupiedVehicle = undefined;
         targetSlot.iotSensor.rawDistanceCm = 240;
+        targetSlot.iotSensor.detectionConfidence = 99.1;
       }
+
+      const msg = refundAmount > 0
+        ? `Exit verified for ${booking.vehicle.licensePlate}. Actual usage: ${billedHours} hr(s) ($${finalCharge.toFixed(2)}). Unused prepaid amount of $${refundAmount.toFixed(2)} refunded to simulated wallet.`
+        : additionalCharge > 0
+        ? `Exit verified for ${booking.vehicle.licensePlate}. Actual usage: ${billedHours} hr(s) exceeded booked duration. Final charge: $${finalCharge.toFixed(2)}. Additional charge: $${additionalCharge.toFixed(2)}.`
+        : `Exit verified for ${booking.vehicle.licensePlate}. Full duration used (${billedHours} hrs). Final charge: $${finalCharge.toFixed(2)}. Refund: $0.00.`;
 
       return res.json({
         valid: true,
@@ -588,16 +675,18 @@ async function startServer() {
         direction: 'exit',
         booking,
         slot: targetSlot,
+        receipt,
         actualMinutes,
-        overstayMinutes,
-        overstayPenalty,
-        message: overstayPenalty > 0
-          ? `Vehicle ${booking.vehicle.licensePlate} overstayed by ${overstayMinutes}m. Penalty charge of $${overstayPenalty.toFixed(2)} applied.`
-          : `Exit verified for vehicle ${booking.vehicle.licensePlate}. Total session: ${actualMinutes} mins. Thank you for using SMART PARK!`,
+        billedHours,
+        finalCharge,
+        refundAmount,
+        additionalCharge,
+        userWalletBalance: walletAfter,
+        message: msg,
       });
     }
 
-    // Default toggle
+    // Default toggle (fallback)
     if (!booking.checkInTime) {
       booking.checkInTime = now.toISOString();
       booking.qrScannedEntry = true;
@@ -615,6 +704,58 @@ async function startServer() {
 
   app.post('/api/gate/scan', processGateScan);
   app.post('/api/reservations/verify-pass', processGateScan);
+
+  // --- Real-time Live Parking Billing & Timer Endpoint ---
+  app.get('/api/reservations/:id/live-billing', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const booking = reservations.find(r => r.id === id || r.bookingReference === id);
+    if (!booking) return res.status(404).json({ error: 'Reservation not found' });
+
+    if (!booking.checkInTime || booking.status === 'completed' || booking.status === 'cancelled') {
+      return res.json({
+        bookingReference: booking.bookingReference,
+        status: booking.status,
+        checkInTime: booking.checkInTime || null,
+        elapsedSeconds: 0,
+        elapsedMinutes: booking.actualDurationMinutes || 0,
+        currentBilledHours: booking.billedHours || 0,
+        hourlyRate: booking.effectiveHourlyRate || booking.baseRatePerHour,
+        prepaidAmount: booking.prepaidAmount || booking.totalAmount,
+        currentAccumulatedCharge: booking.finalCharge || booking.totalAmount,
+        estimatedRemainingBalance: booking.refundAmount || 0,
+        isOverdue: false,
+        potentialOvercharge: booking.additionalCharge || 0,
+      });
+    }
+
+    const nowMs = Date.now();
+    const checkInMs = new Date(booking.checkInTime).getTime();
+    const elapsedSeconds = Math.max(0, Math.round((nowMs - checkInMs) / 1000));
+    const elapsedMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
+    const currentBilledHours = Math.max(1, Math.ceil(elapsedMinutes / 60));
+    const hourlyRate = booking.effectiveHourlyRate || Number((booking.baseRatePerHour * (booking.dynamicMultiplier || 1)).toFixed(2));
+    const evFee = booking.evChargingIncluded ? (booking.evChargingFee || 5.00) : 0;
+    const currentAccumulatedCharge = Number((currentBilledHours * hourlyRate + evFee).toFixed(2));
+    const prepaid = booking.prepaidAmount || booking.totalAmount;
+    const estimatedRemainingBalance = Number(Math.max(0, prepaid - currentAccumulatedCharge).toFixed(2));
+    const isOverdue = currentBilledHours > booking.durationHours;
+    const potentialOvercharge = isOverdue ? Number((currentAccumulatedCharge - prepaid).toFixed(2)) : 0;
+
+    res.json({
+      bookingReference: booking.bookingReference,
+      status: booking.status,
+      checkInTime: booking.checkInTime,
+      elapsedSeconds,
+      elapsedMinutes,
+      currentBilledHours,
+      hourlyRate,
+      prepaidAmount: prepaid,
+      currentAccumulatedCharge,
+      estimatedRemainingBalance,
+      isOverdue,
+      potentialOvercharge,
+    });
+  });
 
   // --- FEATURE 9: Overstay Alerts Endpoint ---
   app.get('/api/alerts/overstay', (req: Request, res: Response) => {
@@ -687,17 +828,17 @@ async function startServer() {
       const item = zoneDataMap[k];
       const pct = Math.round((item.occupied / item.total) * 100);
       let level: 'low' | 'moderate' | 'high' | 'surge' = 'low';
-      let color = '#10B981'; // Emerald
+      let color = '#22C55E'; // Green: Low (<40%)
 
       if (pct >= 85) {
-        level = 'surge';
-        color = '#EF4444'; // Deep Red
-      } else if (pct >= 65) {
-        level = 'high';
-        color = '#F59E0B'; // Amber
+        level = 'surge'; // Red: Critical
+        color = '#EF4444';
+      } else if (pct >= 70) {
+        level = 'high'; // Orange: High
+        color = '#F97316';
       } else if (pct >= 40) {
-        level = 'moderate';
-        color = '#3B82F6'; // Blue
+        level = 'moderate'; // Yellow: Medium
+        color = '#EAB308';
       }
 
       return {
@@ -973,40 +1114,80 @@ Provide specific parking advice mentioning facility names and prices directly fr
     res.json({ success: true, slot });
   });
 
-  // --- API: Analytics Legacy ---
+  // --- API: Analytics (Facility-Specific & Combined 4-Facility Overview) ---
   app.get('/api/analytics', (req: Request, res: Response) => {
-    const total = slots.length;
-    const occupied = slots.filter(s => s.status === 'occupied').length;
-    const reserved = slots.filter(s => s.status === 'reserved').length;
-    const available = slots.filter(s => s.status === 'available').length;
-    const maintenance = slots.filter(s => s.status === 'maintenance').length;
+    const { locationId } = req.query;
+    const isAll = !locationId || locationId === 'all';
+    
+    const targetSlots = isAll ? slots : slots.filter(s => s.locationId === locationId);
+    const targetReservations = isAll ? reservations : reservations.filter(r => r.locationId === locationId);
+
+    const total = targetSlots.length;
+    const occupied = targetSlots.filter(s => s.status === 'occupied').length;
+    const reserved = targetSlots.filter(s => s.status === 'reserved').length;
+    const available = targetSlots.filter(s => s.status === 'available').length;
+    const maintenance = targetSlots.filter(s => s.status === 'maintenance').length;
     const occupancyRate = total > 0 ? Math.round(((occupied + reserved) / total) * 100) : 0;
 
-    const totalRevenue = reservations
-      .filter(r => r.paymentStatus === 'paid')
-      .reduce((sum, r) => sum + r.totalAmount, 0);
+    const totalRevenue = targetReservations
+      .filter(r => r.paymentStatus === 'paid' || r.paymentStatus === 'settled')
+      .reduce((sum, r) => sum + (r.finalCharge || r.totalAmount), 0);
+
+    const activeVehicles = occupied;
+    const onlineSensors = targetSlots.filter(s => s.iotSensor && s.iotSensor.batteryLevel > 10).length;
+
+    // Combined facility breakdown for all 4 facilities
+    const facilityBreakdown = locations.map(loc => {
+      const locSlots = slots.filter(s => s.locationId === loc.id);
+      const locRes = reservations.filter(r => r.locationId === loc.id);
+      const locOccupied = locSlots.filter(s => s.status === 'occupied').length;
+      const locReserved = locSlots.filter(s => s.status === 'reserved').length;
+      const locAvailable = locSlots.filter(s => s.status === 'available').length;
+      const locTotal = locSlots.length;
+      const locRate = locTotal > 0 ? Math.round(((locOccupied + locReserved) / locTotal) * 100) : 0;
+      const locRev = locRes
+        .filter(r => r.paymentStatus === 'paid' || r.paymentStatus === 'settled')
+        .reduce((sum, r) => sum + (r.finalCharge || r.totalAmount), 0);
+
+      return {
+        id: loc.id,
+        name: loc.name,
+        totalSlots: locTotal,
+        availableSlots: locAvailable,
+        occupiedSlots: locOccupied,
+        reservedSlots: locReserved,
+        occupancyRate: locRate,
+        revenue: Number(locRev.toFixed(2)),
+        activeBookingsCount: locRes.filter(r => r.status === 'active' || r.status === 'upcoming').length,
+        activeVehicles: locOccupied,
+        onlineSensors: locSlots.length,
+      };
+    });
 
     const hourlyOccupancy = [
-      { hour: '00:00', rate: 22, revenue: 140 },
-      { hour: '02:00', rate: 16, revenue: 95 },
-      { hour: '04:00', rate: 14, revenue: 80 },
-      { hour: '06:00', rate: 35, revenue: 290 },
-      { hour: '08:00', rate: 72, revenue: 820 },
-      { hour: '10:00', rate: 88, revenue: 1250 },
-      { hour: '12:00', rate: 94, revenue: 1480 },
-      { hour: '14:00', rate: 86, revenue: 1310 },
-      { hour: '16:00', rate: 82, revenue: 1190 },
-      { hour: '18:00', rate: 76, revenue: 990 },
-      { hour: '20:00', rate: 58, revenue: 640 },
-      { hour: '22:00', rate: 38, revenue: 380 },
+      { hour: '00:00', rate: Math.max(10, occupancyRate - 45), revenue: Math.round(totalRevenue * 0.03) },
+      { hour: '04:00', rate: Math.max(8, occupancyRate - 52), revenue: Math.round(totalRevenue * 0.02) },
+      { hour: '08:00', rate: Math.min(95, occupancyRate + 12), revenue: Math.round(totalRevenue * 0.16) },
+      { hour: '12:00', rate: Math.min(98, occupancyRate + 18), revenue: Math.round(totalRevenue * 0.28) },
+      { hour: '16:00', rate: Math.min(96, occupancyRate + 14), revenue: Math.round(totalRevenue * 0.24) },
+      { hour: '20:00', rate: Math.max(20, occupancyRate - 15), revenue: Math.round(totalRevenue * 0.18) },
+      { hour: '23:00', rate: Math.max(12, occupancyRate - 38), revenue: Math.round(totalRevenue * 0.09) },
     ];
 
-    const zoneDistribution = [
-      { zone: 'Zone A (EV & Fast)', occupancy: 92, total: 12, revenue: 1420 },
-      { zone: 'Zone B (General)', occupancy: 75, total: 12, revenue: 1180 },
-      { zone: 'Zone C (Compact)', occupancy: 68, total: 12, revenue: 950 },
-      { zone: 'Zone D (Long Stay)', occupancy: 83, total: 12, revenue: 1640 },
-    ];
+    const zonesList = ['Zone A', 'Zone B', 'Zone C', 'Zone D'];
+    const zoneDistribution = zonesList.map(zName => {
+      const zSlots = targetSlots.filter(s => s.zone === zName);
+      const zOcc = zSlots.filter(s => s.status === 'occupied' || s.status === 'reserved').length;
+      const zTotal = zSlots.length;
+      const zRate = zTotal > 0 ? Math.round((zOcc / zTotal) * 100) : 0;
+      const zLabel = zName === 'Zone A' ? 'EV Superchargers' : zName === 'Zone B' ? 'SUV & Standard' : zName === 'Zone C' ? 'Compact' : 'VIP & Long-Stay';
+      return {
+        zone: `${zName} (${zLabel})`,
+        occupancy: zRate,
+        total: zTotal,
+        revenue: Math.round(zOcc * (isAll ? 65 : 45)),
+      };
+    });
 
     res.json({
       stats: {
@@ -1017,11 +1198,15 @@ Provide specific parking advice mentioning facility names and prices directly fr
         maintenance,
         occupancyRatePercentage: occupancyRate,
         revenueToday: Number(totalRevenue.toFixed(2)),
-        activeBookingsCount: reservations.filter(r => r.status === 'active' || r.status === 'upcoming').length,
+        activeBookingsCount: targetReservations.filter(r => r.status === 'active' || r.status === 'upcoming').length,
         activeUsersCount: users.length,
+        activeVehicles,
+        onlineSensors,
       },
+      facilityBreakdown,
       hourlyOccupancy,
       zoneDistribution,
+      selectedFacility: isAll ? 'all' : locationId,
     });
   });
 

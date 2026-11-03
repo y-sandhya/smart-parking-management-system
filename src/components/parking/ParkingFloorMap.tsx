@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
-import { ParkingSlot, SlotType } from '../../types';
-import { VehicleIllustration } from './VehicleIllustration';
-import { 
-  Zap, 
-  Car, 
-  ShieldCheck, 
-  Radio, 
-  CheckCircle2, 
-  Clock, 
-  MapPin, 
-  Navigation,
-  Accessibility,
-  BatteryCharging
+import { ParkingSlot } from '../../types';
+import {
+  Car,
+  Zap,
+  ArrowRight,
+  ArrowDown,
+  ArrowUp,
+  ShieldCheck,
+  Compass,
+  Layers,
+  Radio,
+  CheckCircle2,
+  Lock,
+  BatteryCharging,
+  Wifi,
+  Sparkles,
+  Info
 } from 'lucide-react';
 
 interface ParkingFloorMapProps {
@@ -31,183 +35,250 @@ export const ParkingFloorMap: React.FC<ParkingFloorMapProps> = ({
   onFloorChange,
   floors,
 }) => {
-  const [selectedZone, setSelectedZone] = useState<string>('all');
-  const [hoveredSlot, setHoveredSlot] = useState<ParkingSlot | null>(null);
+  const [activeZoneFilter, setActiveZoneFilter] = useState<string>('all');
+  const [showSensorDetails, setShowSensorDetails] = useState<boolean>(false);
 
-  // Filter slots by current floor
+  // Filter slots for current floor
   const floorSlots = slots.filter(s => s.floor === currentFloor);
-  const zones = ['all', 'Zone A', 'Zone B', 'Zone C', 'Zone D'];
-
-  const displayedSlots = selectedZone === 'all'
+  const displayedSlots = activeZoneFilter === 'all'
     ? floorSlots
-    : floorSlots.filter(s => s.zone === selectedZone);
+    : floorSlots.filter(s => s.zone === activeZoneFilter || s.zone.endsWith(activeZoneFilter));
 
-  // Group slots by Zone for clear visual lanes
-  const zoneGroups = ['Zone A', 'Zone B', 'Zone C', 'Zone D'].map(zoneName => ({
-    zone: zoneName,
-    slots: floorSlots.filter(s => s.zone === zoneName),
-  }));
+  const totalOnFloor = floorSlots.length;
+  const availableOnFloor = floorSlots.filter(s => s.status === 'available').length;
+  const occupiedOnFloor = floorSlots.filter(s => s.status === 'occupied').length;
+  const reservedOnFloor = floorSlots.filter(s => s.status === 'reserved').length;
+  const evOnFloor = floorSlots.filter(s => s.hasEvCharger && s.status === 'available').length;
 
-  const getSlotTypeBadge = (type: SlotType) => {
-    switch (type) {
-      case 'ev':
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-            <Zap className="w-3 h-3 text-emerald-600 fill-emerald-500" /> EV 150kW
-          </span>
-        );
-      case 'disabled':
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-            <Accessibility className="w-3 h-3 text-blue-600" /> Accessible
-          </span>
-        );
-      case 'compact':
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-            Compact
-          </span>
-        );
-      case 'vip':
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-            VIP Bay
-          </span>
-        );
-      default:
-        return (
-          <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-            Standard
-          </span>
-        );
-    }
-  };
+  const zones = ['Zone A', 'Zone B', 'Zone C', 'Zone D'];
+
+  // Top-down SVG car graphic for occupied slots (Crisp, stylish vehicle rendering)
+  const renderVehicleSvg = (color: string = '#2563EB') => (
+    <svg className="w-10 h-16 drop-shadow-sm transition-transform group-hover:scale-105" viewBox="0 0 40 65" fill="none">
+      {/* Car Body Outer Shell */}
+      <rect x="5" y="6" width="30" height="53" rx="7" fill={color} />
+      {/* Front Windshield */}
+      <path d="M9 18 C13 14, 27 14, 31 18 L29 27 C25 25, 15 25, 11 27 Z" fill="#0F172A" opacity="0.85" />
+      {/* Rear Window */}
+      <path d="M10 48 C14 51, 26 51, 30 48 L29 43 C25 44, 15 44, 11 43 Z" fill="#0F172A" opacity="0.85" />
+      {/* Roof Panel */}
+      <rect x="11" y="27" width="18" height="15" rx="3" fill="#FFFFFF" opacity="0.25" />
+      {/* Front Headlights */}
+      <rect x="7" y="7" width="5" height="3" rx="1.5" fill="#FEF08A" />
+      <rect x="28" y="7" width="5" height="3" rx="1.5" fill="#FEF08A" />
+      {/* Rear Taillights */}
+      <rect x="7" y="55" width="5" height="2.5" rx="1" fill="#EF4444" />
+      <rect x="28" y="55" width="5" height="2.5" rx="1" fill="#EF4444" />
+      {/* Side Mirrors */}
+      <rect x="3" y="19" width="3" height="4" rx="1.5" fill={color} />
+      <rect x="34" y="19" width="3" height="4" rx="1.5" fill={color} />
+    </svg>
+  );
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-      {/* Header bar with Floor selector and live stats */}
-      <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold text-slate-900 text-lg">Interactive Parking Layout</h3>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Live IoT Sensors
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Click an available green bay to reserve. Hover to inspect sensor telemetry.
-          </p>
-        </div>
-
-        {/* Floor Selection Tabs */}
-        <div className="flex items-center bg-slate-200/80 p-1 rounded-xl">
+    <div className="bg-white rounded-3xl border border-[#E7EBF0] shadow-[0_1px_3px_rgba(0,0,0,0.03)] p-4 sm:p-6 space-y-6">
+      {/* Floor & Zone Controls Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#E7EBF0]">
+        {/* Floor Selection Pills */}
+        <div className="flex items-center gap-1.5 p-1 bg-[#F3F6FA] rounded-2xl overflow-x-auto max-w-full border border-[#E7EBF0]">
+          <span className="text-[11px] font-black uppercase text-[#718096] px-2.5 py-1 flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5 text-[#2563EB]" />
+            Floor
+          </span>
           {floors.map(floor => (
             <button
               key={floor}
+              type="button"
               onClick={() => onFloorChange(floor)}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
                 currentFloor === floor
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/60'
+                  ? 'bg-[#2563EB] text-white shadow-xs'
+                  : 'text-[#718096] hover:text-[#172B4D] hover:bg-slate-200/60'
               }`}
             >
               {floor}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Filter and Status Legend */}
-      <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs bg-white">
-        {/* Zone Filters */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-slate-400 font-medium mr-1">Zone:</span>
-          {zones.map(z => (
+        {/* Zone Filter & Telemetry Toggle */}
+        <div className="flex items-center gap-2">
+          {/* Zone filter buttons */}
+          <div className="hidden sm:flex items-center gap-1 bg-[#F3F6FA] border border-[#E7EBF0] p-1 rounded-xl">
             <button
-              key={z}
-              onClick={() => setSelectedZone(z)}
-              className={`px-2.5 py-1 rounded-md transition-colors ${
-                selectedZone === z
-                  ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200'
-                  : 'text-slate-600 hover:bg-slate-100'
+              type="button"
+              onClick={() => setActiveZoneFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                activeZoneFilter === 'all'
+                  ? 'bg-[#2563EB] text-white shadow-2xs'
+                  : 'text-[#718096] hover:text-[#172B4D]'
               }`}
             >
-              {z === 'all' ? 'All Zones' : z}
+              All Zones
             </button>
-          ))}
+            {zones.map(z => {
+              const zoneCode = z.replace('Zone ', '');
+              return (
+                <button
+                  key={z}
+                  type="button"
+                  onClick={() => setActiveZoneFilter(zoneCode)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    activeZoneFilter === zoneCode
+                      ? 'bg-[#2563EB] text-white shadow-2xs'
+                      : 'text-[#718096] hover:text-[#172B4D]'
+                  }`}
+                >
+                  {zoneCode}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowSensorDetails(!showSensorDetails)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+              showSensorDetails
+                ? 'bg-blue-50 border-blue-200 text-[#2563EB]'
+                : 'bg-white border-[#E7EBF0] text-[#718096] hover:bg-[#F3F6FA]'
+            }`}
+            title="Toggle IoT Telemetry overlays"
+          >
+            <Radio className="w-3.5 h-3.5 text-[#2563EB]" />
+            <span className="hidden md:inline">IoT Telemetry</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Floor Occupancy Counter Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-2xl flex items-center gap-3">
+          <div className="w-3 h-3 rounded-full bg-[#16A36A] animate-pulse" />
+          <div>
+            <div className="text-[11px] font-bold text-emerald-800">Available Bays</div>
+            <div className="text-lg font-black text-emerald-950">{availableOnFloor} / {totalOnFloor}</div>
+          </div>
         </div>
 
-        {/* Status Indicators Legend */}
-        <div className="flex items-center gap-4 flex-wrap text-slate-600 font-medium">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-emerald-200"></span>
-            <span>Available</span>
+        <div className="p-3 bg-white border border-[#E7EBF0] rounded-2xl flex items-center gap-3 shadow-2xs">
+          <div className="w-3 h-3 rounded-full bg-slate-400" />
+          <div>
+            <div className="text-[11px] font-bold text-[#718096]">Occupied</div>
+            <div className="text-lg font-black text-[#172B4D]">{occupiedOnFloor}</div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-amber-500 ring-2 ring-amber-200"></span>
-            <span>Reserved</span>
+        </div>
+
+        <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-2xl flex items-center gap-3">
+          <div className="w-3 h-3 rounded-full bg-[#E9A23B]" />
+          <div>
+            <div className="text-[11px] font-bold text-amber-800">Reserved</div>
+            <div className="text-lg font-black text-amber-950">{reservedOnFloor}</div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-rose-500 ring-2 ring-rose-200"></span>
-            <span>Occupied</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-blue-600 ring-2 ring-blue-200"></span>
-            <span>Selected</span>
+        </div>
+
+        <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-2xl flex items-center gap-3">
+          <Zap className="w-4 h-4 text-[#2563EB]" />
+          <div>
+            <div className="text-[11px] font-bold text-blue-800">EV Available</div>
+            <div className="text-lg font-black text-blue-950">{evOnFloor} Chargers</div>
           </div>
         </div>
       </div>
 
-      {/* Floor Plan Canvas Layout */}
-      <div className="p-4 sm:p-6 bg-slate-100/70 overflow-x-auto min-h-[520px] flex flex-col justify-between">
-        {/* Entrance Gate Wayfinding Banner */}
-        <div className="flex items-center justify-between mb-4 bg-white/90 backdrop-blur-sm border border-slate-200 px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 shadow-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
-              IN
-            </div>
-            <div>
-              <span className="text-slate-900">Main Vehicle Gate & Scanner Barrier</span>
-              <span className="text-slate-400 font-normal ml-2">Clearance 2.4m • Automated QR Lane</span>
-            </div>
+      {/* Top Legend */}
+      <div className="flex flex-wrap items-center justify-between text-xs text-[#718096] bg-[#F3F6FA] p-3 rounded-2xl border border-[#E7EBF0] gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded-md bg-emerald-50 border-2 border-[#16A36A] inline-block shadow-2xs" />
+            <span className="font-bold text-[#172B4D]">Available (Click to Reserve)</span>
           </div>
-          <div className="flex items-center gap-3 text-slate-500">
-            <span className="flex items-center gap-1 text-blue-600">
-              <Navigation className="w-3.5 h-3.5" /> One-Way Flow
-            </span>
-            <div className="w-6 h-6 rounded-lg bg-rose-600 text-white flex items-center justify-center font-bold text-xs">
-              OUT
-            </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded-md bg-rose-50 border-2 border-[#DC5252] inline-block shadow-2xs" />
+            <span className="font-bold text-[#172B4D]">Occupied</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded-md bg-amber-50 border-2 border-[#E9A23B] inline-block shadow-2xs" />
+            <span className="font-bold text-[#172B4D]">Reserved</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded-md bg-blue-50 border-2 border-[#2563EB] inline-block shadow-2xs" />
+            <span className="font-bold text-[#172B4D]">Selected</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-[#16A36A] fill-current" />
+            <span className="font-bold text-[#172B4D]">EV Charging</span>
           </div>
         </div>
 
-        {/* Garage Bay Grid with Driving Aisles */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {zoneGroups.map(({ zone, slots: zSlots }) => {
-            if (selectedZone !== 'all' && selectedZone !== zone) return null;
+        <div className="text-[11px] text-[#718096] flex items-center gap-1">
+          <Info className="w-3.5 h-3.5 text-[#2563EB]" />
+          <span>Real-time Ultrasonic IoT Telemetry Simulated</span>
+        </div>
+      </div>
+
+      {/* LIGHT THEME GARAGE DECK CANVAS (#F8FAFC) */}
+      <div className="relative bg-[#F8FAFC] rounded-3xl p-6 overflow-hidden border-2 border-[#E7EBF0] shadow-xs">
+        {/* Architectural Grid Texture Overlay */}
+        <div className="absolute inset-0 bg-[radial-gradient(#CBD5E1_1.2px,transparent_1.2px)] [background-size:24px_24px] opacity-60 pointer-events-none" />
+
+        {/* ENTRY GATE BARRIER */}
+        <div className="flex items-center justify-between mb-5 pb-3 border-b border-[#E7EBF0] text-xs relative z-10">
+          <div className="flex items-center gap-3 bg-emerald-50 border-2 border-emerald-300 text-emerald-900 px-3.5 py-1.5 rounded-xl shadow-2xs">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#16A36A] animate-ping" />
+            <span className="font-black tracking-wide text-emerald-900">GATE 1 • ENTRY (RFID & QR SCANNER)</span>
+            <ArrowRight className="w-4 h-4 text-[#16A36A] animate-pulse" />
+          </div>
+
+          <div className="text-[#718096] text-[11px] font-mono hidden md:flex items-center gap-2 font-bold">
+            <Compass className="w-3.5 h-3.5 text-[#2563EB]" />
+            <span>DIRECTION: ONE-WAY PERIMETER CIRCULATION</span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-rose-50 border-2 border-rose-300 text-rose-900 px-3.5 py-1.5 rounded-xl shadow-2xs">
+            <ArrowRight className="w-4 h-4 text-[#DC5252]" />
+            <span className="font-black tracking-wide text-rose-900">GATE 2 • EXIT BARRIER</span>
+          </div>
+        </div>
+
+        {/* ZONES GRID LAYOUT (Panels in #FFFFFF with #E7EBF0 borders) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+          {zones.map(zoneName => {
+            const zoneCode = zoneName.replace('Zone ', '');
+            if (activeZoneFilter !== 'all' && activeZoneFilter !== zoneCode) {
+              return null;
+            }
+
+            const zoneSlots = floorSlots.filter(s => s.zone === zoneName || s.zone === zoneCode);
 
             return (
               <div
-                key={zone}
-                className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs flex flex-col justify-between"
+                key={zoneName}
+                className="bg-[#FFFFFF] rounded-2xl p-4 border border-[#E7EBF0] shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3"
               >
-                {/* Zone Header */}
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded bg-blue-600"></span>
-                    <span className="font-bold text-xs text-slate-800">{zone}</span>
+                {/* Zone Header & Elevator Guidance */}
+                <div className="flex items-center justify-between pb-2.5 border-b border-[#E7EBF0]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-[#2563EB] text-white font-black text-xs flex items-center justify-center shadow-2xs">
+                      {zoneCode}
+                    </span>
+                    <span className="text-sm font-black text-[#172B4D]">{zoneName}</span>
+                    <span className="text-[11px] font-bold text-[#718096]">
+                      ({zoneSlots.filter(s => s.status === 'available').length} free)
+                    </span>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    {zSlots.filter(s => s.status === 'available').length} / {zSlots.length} Free
+
+                  <span className="text-[11px] font-mono text-[#718096] flex items-center gap-1 font-semibold">
+                    <Compass className="w-3.5 h-3.5 text-[#2563EB]" />
+                    <span>~30s to Lobby Lift</span>
                   </span>
                 </div>
 
-                {/* Slots Column */}
-                <div className="space-y-3">
-                  {zSlots.map(slot => {
+                {/* Bays Grid in Zone */}
+                <div className="grid grid-cols-3 gap-3">
+                  {zoneSlots.map(slot => {
                     const isSelected = selectedSlot?.id === slot.id;
-                    const isAvailable = slot.status === 'available';
+                    const isAvail = slot.status === 'available';
                     const isOccupied = slot.status === 'occupied';
                     const isReserved = slot.status === 'reserved';
 
@@ -215,180 +286,130 @@ export const ParkingFloorMap: React.FC<ParkingFloorMapProps> = ({
                       <div
                         key={slot.id}
                         onClick={() => {
-                          if (isAvailable) onSelectSlot(slot);
+                          if (isAvail) {
+                            onSelectSlot(slot);
+                          }
                         }}
-                        onMouseEnter={() => setHoveredSlot(slot)}
-                        onMouseLeave={() => setHoveredSlot(null)}
-                        className={`relative rounded-xl border-2 transition-all duration-200 p-2.5 select-none ${
+                        className={`relative rounded-xl p-2.5 flex flex-col items-center justify-between min-h-[148px] transition-all duration-200 border-2 select-none ${
                           isSelected
-                            ? 'border-blue-600 bg-blue-50/70 ring-4 ring-blue-100 shadow-md scale-[1.02] cursor-pointer'
-                            : isAvailable
-                            ? 'border-emerald-300 bg-emerald-50/40 hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-sm cursor-pointer'
+                            ? 'bg-blue-50 border-[#2563EB] shadow-md ring-2 ring-[#2563EB]/25 scale-[1.02] cursor-pointer'
+                            : isAvail
+                            ? 'bg-emerald-50/80 border-[#16A36A]/60 hover:border-[#16A36A] hover:bg-emerald-100/70 hover:scale-[1.02] cursor-pointer group shadow-2xs'
                             : isReserved
-                            ? 'border-amber-300 bg-amber-50/50 cursor-not-allowed opacity-90'
-                            : 'border-slate-300 bg-slate-50 cursor-not-allowed'
+                            ? 'bg-amber-50/80 border-[#E9A23B]/60 cursor-not-allowed shadow-2xs'
+                            : 'bg-rose-50/70 border-[#DC5252]/60 cursor-not-allowed shadow-2xs'
                         }`}
                       >
-                        {/* Slot Header */}
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-extrabold text-sm text-slate-900 tracking-tight">
-                              Bay {slot.slotNumber}
-                            </span>
-                            {/* Status Dot */}
-                            <span
-                              className={`w-2 h-2 rounded-full ${
-                                isSelected
-                                  ? 'bg-blue-600 animate-ping'
-                                  : isAvailable
-                                  ? 'bg-emerald-500'
-                                  : isReserved
-                                  ? 'bg-amber-500'
-                                  : 'bg-rose-500'
-                              }`}
-                            ></span>
-                          </div>
+                        {/* Bay number header & EV icon */}
+                        <div className="w-full flex items-center justify-between text-xs">
+                          <span
+                            className={`font-black tracking-tight ${
+                              isSelected
+                                ? 'text-blue-950'
+                                : isAvail
+                                ? 'text-emerald-950'
+                                : isReserved
+                                ? 'text-amber-950'
+                                : 'text-rose-950'
+                            }`}
+                          >
+                            {slot.slotNumber}
+                          </span>
 
                           <div className="flex items-center gap-1">
-                            {getSlotTypeBadge(slot.type)}
+                            {slot.hasEvCharger && (
+                              <span
+                                className="p-1 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                title={`EV Charger: ${slot.evChargerPowerKw || 150}kW`}
+                              >
+                                <Zap className="w-3 h-3 fill-current" />
+                              </span>
+                            )}
+                            {slot.type === 'disabled' && (
+                              <span className="text-[10px] bg-blue-100 text-blue-800 px-1 rounded font-bold border border-blue-200">
+                                ACC
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        {/* Middle: Parking Bay Graphics with Vehicle Illustration if occupied/reserved */}
-                        <div className="h-28 w-full rounded-lg bg-slate-900/5 border border-dashed border-slate-300/80 relative flex items-center justify-center overflow-hidden">
-                          {/* Parking Bay Painted Line Markings */}
-                          <div className="absolute top-1 left-2 text-[9px] font-mono font-bold text-slate-400">
-                            [ {slot.slotNumber} ]
-                          </div>
-                          
-                          {/* Top-down vehicle illustration if occupied or reserved */}
-                          {isOccupied && slot.occupiedVehicle ? (
+                        {/* Bay Center Graphic */}
+                        <div className="my-1 flex items-center justify-center w-full">
+                          {isOccupied ? (
                             <div className="flex flex-col items-center">
-                              <VehicleIllustration
-                                type={slot.occupiedVehicle.type}
-                                color={slot.occupiedVehicle.color}
-                                className="w-14 h-24"
-                                isCharging={slot.type === 'ev'}
-                              />
-                              <span className="absolute bottom-1 bg-slate-900/80 text-white text-[8px] font-mono px-1.5 py-0.2 rounded">
-                                {slot.occupiedVehicle.licensePlate}
+                              {renderVehicleSvg('#2563EB')}
+                              <span className="text-[9px] font-mono text-[#172B4D] bg-white border border-rose-200 px-1.5 py-0.5 rounded shadow-2xs mt-1 font-bold line-clamp-1 max-w-[70px] text-center">
+                                {slot.occupiedVehicle?.licensePlate || 'PARKED'}
                               </span>
                             </div>
                           ) : isReserved ? (
-                            <div className="flex flex-col items-center justify-center text-amber-700">
-                              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center mb-1">
-                                <Clock className="w-5 h-5 text-amber-600 animate-spin" style={{ animationDuration: '6s' }} />
-                              </div>
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
-                                Reserved Bay
+                            <div className="flex flex-col items-center text-amber-700 py-3">
+                              <Lock className="w-6 h-6 mb-1 text-[#E9A23B]" />
+                              <span className="text-[10px] font-black uppercase tracking-wider">
+                                Reserved
                               </span>
-                              <span className="text-[9px] text-amber-600">Pending Arrival</span>
                             </div>
                           ) : (
-                            <div className="flex flex-col items-center justify-center text-emerald-700 py-2">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 transition-transform ${isSelected ? 'bg-blue-600 text-white scale-110' : 'bg-emerald-100 text-emerald-600'}`}>
-                                {isSelected ? (
-                                  <CheckCircle2 className="w-5 h-5" />
-                                ) : (
-                                  <Car className="w-4 h-4" />
-                                )}
+                            <div className="flex flex-col items-center justify-center py-4">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                                <CheckCircle2 className="w-4 h-4 text-[#16A36A]" />
                               </div>
-                              <span className={`text-[11px] font-bold ${isSelected ? 'text-blue-700' : 'text-emerald-700'}`}>
-                                {isSelected ? 'Selected' : 'Available'}
-                              </span>
-                              <span className="text-[10px] text-slate-500 font-semibold">
-                                ${(slot.baseHourlyRate * 1.15).toFixed(2)}/hr
+                              <span className="text-[10px] font-bold text-emerald-800 mt-1">
+                                Open Bay
                               </span>
                             </div>
                           )}
-
-                          {/* IoT Sensor Blip indicator at the top of bay */}
-                          <div className="absolute top-1 right-2 flex items-center gap-0.5 text-[8px] font-mono text-slate-500 bg-white/80 px-1 rounded shadow-2xs">
-                            <Radio className={`w-2.5 h-2.5 ${isOccupied ? 'text-rose-500' : 'text-emerald-500 animate-pulse'}`} />
-                            <span>{slot.iotSensor.batteryLevel}%</span>
-                          </div>
                         </div>
 
-                        {/* Footer Details */}
-                        <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-slate-400" />
-                            {slot.distanceToElevatorMeters}m to lift
-                          </span>
-                          {isAvailable && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectSlot(slot);
-                              }}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
-                                isSelected
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                              }`}
-                            >
-                              {isSelected ? 'Chosen' : 'Select'}
-                            </button>
+                        {/* Bay Footer Rate or Occupied Status */}
+                        <div className="w-full text-center pt-1 border-t border-[#E7EBF0]">
+                          {isAvail ? (
+                            <span className="text-[11px] font-black text-emerald-950">
+                              ${(slot.baseHourlyRate * 1.15).toFixed(2)}/hr
+                            </span>
+                          ) : isOccupied ? (
+                            <span className="text-[10px] font-bold text-[#DC5252]">
+                              Occupied
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-[#E9A23B]">
+                              Reserved
+                            </span>
                           )}
                         </div>
+
+                        {/* Optional IoT Telemetry Badge */}
+                        {showSensorDetails && slot.iotSensor && (
+                          <div className="absolute -top-1.5 -right-1.5 bg-white border border-blue-200 text-[#2563EB] text-[8px] font-mono px-1.5 py-0.5 rounded-full shadow-2xs flex items-center gap-1 z-20 font-bold">
+                            <Wifi className="w-2.5 h-2.5 text-[#2563EB]" />
+                            <span>{slot.iotSensor.batteryLevel}%</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
-                </div>
-
-                {/* Central Lane Wayfinding Indicator */}
-                <div className="mt-3 pt-2 border-t border-dashed border-slate-200 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400">
-                  <span>◀ LANE {zone.charAt(5)}</span>
-                  <span>•</span>
-                  <span>SPEED 10 KM/H</span>
-                  <span>▶</span>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Hovered / Selected Slot IoT Telemetry Card */}
-        {(hoveredSlot || selectedSlot) && (
-          <div className="mt-4 bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl p-3 shadow-md flex flex-wrap items-center justify-between gap-4 text-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 font-extrabold text-sm">
-                {(hoveredSlot || selectedSlot)?.slotNumber}
-              </div>
-              <div>
-                <div className="font-bold text-slate-900 flex items-center gap-2">
-                  <span>Bay {(hoveredSlot || selectedSlot)?.slotNumber} Details</span>
-                  <span className="text-[10px] font-medium text-slate-500">
-                    Floor {(hoveredSlot || selectedSlot)?.floor} • {(hoveredSlot || selectedSlot)?.zone}
-                  </span>
-                </div>
-                <div className="text-slate-500 text-[11px] flex items-center gap-3 mt-0.5">
-                  <span>Rate: ${(hoveredSlot || selectedSlot)?.currentDynamicRate.toFixed(2)}/hr</span>
-                  <span>•</span>
-                  <span>Distance: {(hoveredSlot || selectedSlot)?.distanceToElevatorMeters} meters ({(hoveredSlot || selectedSlot)?.walkingTimeSeconds}s walk)</span>
-                  <span>•</span>
-                  <span>Bay Size: {(hoveredSlot || selectedSlot)?.dimensions.widthM}m × {(hoveredSlot || selectedSlot)?.dimensions.lengthM}m</span>
-                </div>
-              </div>
-            </div>
-
-            {/* IoT Sensor Reading (Simulated) */}
-            <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-              <div className="text-right">
-                <div className="text-[10px] font-bold text-slate-700 flex items-center justify-end gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  Sensor {(hoveredSlot || selectedSlot)?.iotSensor.sensorId} (Simulated)
-                </div>
-                <div className="text-[10px] text-slate-400">
-                  Clearance: {(hoveredSlot || selectedSlot)?.iotSensor.rawDistanceCm}cm • Signal: {(hoveredSlot || selectedSlot)?.iotSensor.signalStrengthDbm} dBm
-                </div>
-              </div>
-              <div className="text-emerald-600 font-extrabold text-xs">
-                {(hoveredSlot || selectedSlot)?.iotSensor.detectionConfidence}% Conf.
-              </div>
-            </div>
+        {/* Central Driving Lane Runway Indicator (Light Road Markings) */}
+        <div className="mt-6 pt-4 border-t-2 border-dashed border-[#CBD5E1] flex items-center justify-between text-[#718096] font-mono text-[11px] relative z-10">
+          <div className="flex items-center gap-2">
+            <ArrowRight className="w-4 h-4 text-[#E9A23B] animate-pulse" />
+            <span className="tracking-widest uppercase font-bold text-[#172B4D]">Drive Lane A → Zone B Connector</span>
           </div>
-        )}
+
+          <div className="px-3 py-1 rounded-md bg-white text-[#172B4D] font-bold border border-[#E7EBF0] shadow-2xs">
+            MAX CLEARANCE: 2.1 METERS
+          </div>
+
+          <div className="flex items-center gap-2 font-bold text-[#172B4D]">
+            <span className="tracking-widest uppercase">Pedestrian Pathway To Elevators</span>
+            <ArrowRight className="w-4 h-4 text-[#16A36A]" />
+          </div>
+        </div>
       </div>
     </div>
   );

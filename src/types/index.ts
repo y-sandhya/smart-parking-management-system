@@ -91,6 +91,50 @@ export interface BookingExtension {
   newEndTime: string;
 }
 
+export interface PaymentReceipt {
+  receiptId: string;
+  bookingReference: string;
+  facilityName: string;
+  slotNumber: string;
+  floor: string;
+  zone: string;
+  vehiclePlate: string;
+  vehicleModel: string;
+  checkInTime: string;
+  checkOutTime: string;
+  bookedDurationHours: number;
+  actualDurationMinutes: number;
+  billedHours: number;
+  hourlyRate: number;
+  prepaidAmount: number;
+  baseUsageCharge: number;
+  evChargingFee: number;
+  overstayCharge: number;
+  finalCharge: number;
+  refundAmount: number;
+  additionalCharge: number;
+  walletBalanceBefore: number;
+  walletBalanceAfter: number;
+  timestamp: string;
+  isSimulated: boolean;
+  roundingPolicy: string;
+}
+
+export interface LiveBillingStatus {
+  bookingReference: string;
+  status: string;
+  checkInTime: string;
+  elapsedSeconds: number;
+  elapsedMinutes: number;
+  currentBilledHours: number;
+  hourlyRate: number;
+  prepaidAmount: number;
+  currentAccumulatedCharge: number;
+  estimatedRemainingBalance: number;
+  isOverdue: boolean;
+  potentialOvercharge: number;
+}
+
 export interface Reservation {
   id: string;
   bookingReference: string; // e.g. "SP-2026-94182"
@@ -118,7 +162,7 @@ export interface Reservation {
   discountApplied: number;
   totalAmount: number;
   status: 'active' | 'upcoming' | 'completed' | 'cancelled';
-  paymentStatus: 'paid' | 'pending' | 'refunded';
+  paymentStatus: 'paid' | 'pending' | 'refunded' | 'settled';
   paymentMethod: string;
   createdAt: string;
   qrPayload: string;
@@ -133,6 +177,16 @@ export interface Reservation {
   overstayMinutes?: number;
   overstayPenalty?: number;
   extensionHistory?: BookingExtension[];
+  // Time-based billing fields
+  prepaidAmount?: number;
+  effectiveHourlyRate?: number;
+  billedHours?: number;
+  accumulatedCharge?: number;
+  finalCharge?: number;
+  refundAmount?: number;
+  additionalCharge?: number;
+  billingSettled?: boolean;
+  receipt?: PaymentReceipt;
 }
 
 export interface UserProfile {

@@ -219,7 +219,13 @@ export const api = {
     direction: 'entry' | 'exit';
     booking: Reservation;
     slot?: ParkingSlot;
+    receipt?: any;
     actualMinutes?: number;
+    billedHours?: number;
+    finalCharge?: number;
+    refundAmount?: number;
+    additionalCharge?: number;
+    userWalletBalance?: number;
     overstayMinutes?: number;
     overstayPenalty?: number;
     message: string;
@@ -234,6 +240,13 @@ export const api = {
       throw new Error(data.message || 'Gate pass scan failed');
     }
     return data;
+  },
+
+  // Live session billing and timer
+  async getLiveBilling(reservationId: string): Promise<any> {
+    const res = await fetch(`/api/reservations/${reservationId}/live-billing`);
+    if (!res.ok) throw new Error('Failed to fetch live billing');
+    return res.json();
   },
 
   // Legacy verify pass wrapper
@@ -288,12 +301,15 @@ export const api = {
     return res.json();
   },
 
-  async getAnalytics(): Promise<{
+  async getAnalytics(locationId?: string): Promise<{
     stats: OccupancyStats;
+    facilityBreakdown?: any[];
     hourlyOccupancy: { hour: string; rate: number; revenue: number }[];
     zoneDistribution: { zone: string; occupancy: number; total: number; revenue: number }[];
+    selectedFacility?: string;
   }> {
-    const res = await fetch('/api/analytics');
+    const url = locationId ? `/api/analytics?locationId=${locationId}` : '/api/analytics';
+    const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch analytics');
     return res.json();
   },

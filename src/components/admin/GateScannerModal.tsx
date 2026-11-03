@@ -39,6 +39,11 @@ export const GateScannerModal: React.FC<GateScannerModalProps> = ({
     booking: Reservation;
     slot?: ParkingSlot;
     actualMinutes?: number;
+    billedHours?: number;
+    finalCharge?: number;
+    refundAmount?: number;
+    additionalCharge?: number;
+    receipt?: any;
     overstayMinutes?: number;
     overstayPenalty?: number;
     message: string;
@@ -262,6 +267,32 @@ export const GateScannerModal: React.FC<GateScannerModalProps> = ({
                 <div className="pt-1 text-[11px] flex justify-between font-medium">
                   <span>Actual Parked Duration:</span>
                   <strong className="text-slate-900">{result.actualMinutes} minutes</strong>
+                </div>
+              )}
+
+              {result.direction === 'exit' && result.finalCharge !== undefined && (
+                <div className="pt-2 border-t border-slate-200/80 space-y-1.5 text-xs">
+                  <div className="flex justify-between font-semibold">
+                    <span className="text-slate-600">Billed Usage ({result.billedHours || 1} hr):</span>
+                    <span className="text-slate-900 font-bold">${result.finalCharge.toFixed(2)}</span>
+                  </div>
+                  {result.refundAmount !== undefined && result.refundAmount > 0 && (
+                    <div className="flex justify-between font-bold text-emerald-800 bg-emerald-100/80 px-2.5 py-1.5 rounded-xl">
+                      <span>Unused Time Refunded:</span>
+                      <span>+${result.refundAmount.toFixed(2)} (Simulated Wallet)</span>
+                    </div>
+                  )}
+                  {result.additionalCharge !== undefined && result.additionalCharge > 0 && (
+                    <div className="flex justify-between font-bold text-rose-800 bg-rose-100/80 px-2.5 py-1.5 rounded-xl">
+                      <span>Overstay Additional Charge:</span>
+                      <span>+${result.additionalCharge.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {result.refundAmount === 0 && !result.additionalCharge && (
+                    <div className="text-[10px] text-slate-500 italic">
+                      Full duration utilized • No refund due ($0.00)
+                    </div>
+                  )}
                 </div>
               )}
 
